@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>MiniCraft 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  background:#87ceeb;
+  touch-action:none;
+}
+#ui{position:fixed;inset:0;pointer-events:none}
+#stick{
+  position:absolute;
+  bottom:20px;
+  left:20px;
+  width:120px;
+  height:120px;
+  border-radius:50%;
+  background:rgba(0,0,0,.3);
+  pointer-events:auto;
+}
+#knob{
+  position:absolute;
+  left:35px;
+  top:35px;
+  width:50px;
+  height:50px;
+  border-radius:50%;
+  background:rgba(255,255,255,.9);
+}
+.btn{
+  position:absolute;
+  width:64px;
+  height:64px;
+  border-radius:50%;
+  border:none;
+  background:rgba(255,255,255,.85);
+  font-size:22px;
+  pointer-events:auto;
+}
+#up{right:20px;bottom:20px}
+#down{right:20px;bottom:100px}
+#place{right:20px;bottom:180px}
+#break{right:20px;bottom:260px}
+#color{
+  position:absolute;
+  right:20px;
+  bottom:340px;
+  width:64px;
+  height:40px;
+  pointer-events:auto;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div id="stick"><div id="knob"></div></div>
+  <button class="btn" id="up">▲</button>
+  <button class="btn" id="down">▼</button>
+  <button class="btn" id="place">🧱</button>
+  <button class="btn" id="break">⛏</button>
+  <input type="color" id="color" value="#3cb043">
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+/* ================== ОСНОВА ================== */
+let scene,camera,renderer;
+let blocks=[];
+let yaw=0,pitch=0;
+let mx=0,my=0,flyUp=false,flyDown=false;
+let currentColor="#3cb043";
+
+const player={x:0,y:0,z:10};
+const PLAYER_HEIGHT=2.32;
+
+/* ================== ИНИЦИАЛИЗАЦИЯ ================== */
+init();
+animate();
+
+function init(){
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x87ceeb);
+
+  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.7));
+  const sun=new THREE.DirectionalLight(0xffffff,0.8);
+  sun.position.set(20,30,10);
+  scene.add(sun);
+
+  createField();
+  createTrees();
+
+  setupControls();
+  window.addEventListener("resize",()=>{
+    camera.aspect=innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);
+  });
+}
+
+/* ================== МИР ================== */
+const box=new THREE.BoxGeometry(1,1,1);
+
+function addBlock(x,y,z,color){
+  const m=new THREE.MeshLambertMaterial({color});
+  const b=new THREE.Mesh(box,m);
+  b.position.set(x,y,z);
+  scene.add(b);
+  blocks.push(b);
+}
+
+function createField(){
+  for(let x=-45;x<45;x++)
+    for(let z=-45;z<45;z++)
+      addBlock(x,0,z,"#3cb043");
+}
+
+function createTrees(){
+  for(let i=0;i<40;i++){
+    const x=Math.floor(Math.random()*80-40);
+    const z=Math.floor(Math.random()*80-40);
+    for(let y=1;y<=4;y++) addBlock(x,y,z,"#8b5a2b");
+    for(let lx=-2;lx<=2;lx++)
+      for(let lz=-2;lz<=2;lz++)
+        for(let ly=3;ly<=5;ly++)
+          if(Math.random()>0.35)
+            addBlock(x+lx,ly,z+lz,"#2e8b57");
+  }
+}
+
+/* ================== УПРАВЛЕНИЕ ================== */
+function setupControls(){
+  const stick=document.getElementById("stick");
+  const knob=document.getElementById("knob");
+
+  stick.addEventListener("touchmove",e=>{
+    const r=stick.getBoundingClientRect();
+    const t=e.touches[0];
+    mx=Math.max(-1,Math.min(1,(t.clientX-r.left-60)/40));
+    my=Math.max(-1,Math.min(1,(t.clientY-r.top-60)/40));
+    knob.style.left=35+mx*30+"px";
+    knob.style.top=35+my*30+"px";
+  },{passive:false});
+
+  stick.addEventListener("touchend",()=>{
+    mx=my=0;
+    knob.style.left="35px";
+    knob.style.top="35px";
+  });
+
+  up.ontouchstart=()=>flyUp=true;
+  up.ontouchend=()=>flyUp=false;
+  down.ontouchstart=()=>flyDown=true;
+  down.ontouchend=()=>flyDown=false;
+
+  color.oninput=e=>currentColor=e.target.value;
+
+  let lx,ly;
+  document.addEventListener("touchstart",e=>{
+    if(e.touches[0].clientX>innerWidth/2){
+      lx=e.touches[0].clientX;
+      ly=e.touches[0].clientY;
+    }
+  });
+  document.addEventListener("touchmove",e=>{
+    if(e.touches[0].clientX<=innerWidth/2) return;
+    const t=e.touches[0];
+    yaw-=(t.clientX-lx)*0.002;
+    pitch-=(t.clientY-ly)*0.002;
+    pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,pitch));
+    lx=t.clientX; ly=t.clientY;
+  });
+
+  const ray=new THREE.Raycaster();
+
+  place.onclick=()=>{
+    ray.setFromCamera({x:0,y:0},camera);
+    const h=ray.intersectObjects(blocks);
+    if(h.length){
+      const p=h[0].object.position;
+      const n=h[0].face.normal;
+      addBlock(p.x+n.x,p.y+n.y,p.z+n.z,currentColor);
+    }
+  };
+
+  break.onclick=()=>{
+    ray.setFromCamera({x:0,y:0},camera);
+    const h=ray.intersectObjects(blocks);
+    if(h.length){
+      scene.remove(h[0].object);
+      blocks.splice(blocks.indexOf(h[0].object),1);
+    }
+  };
+}
+
+/* ================== КАМЕРА (КАК В MINECRAFT) ================== */
+function updateCamera(){
+  const dir=new THREE.Vector3(
+    Math.sin(yaw)*Math.cos(pitch),
+    Math.sin(pitch),
+    Math.cos(yaw)*Math.cos(pitch)
+  );
+  camera.position.set(player.x,player.y+PLAYER_HEIGHT,player.z);
+  camera.lookAt(
+    player.x+dir.x,
+    player.y+PLAYER_HEIGHT+dir.y,
+    player.z+dir.z
+  );
+}
+
+/* ================== ЦИКЛ ================== */
+function animate(){
+  requestAnimationFrame(animate);
+
+  const speed=0.045;
+  const forward=-my*speed;
+  const strafe=mx*speed;
+
+  player.x+=Math.sin(yaw)*forward + Math.cos(yaw+Math.PI/2)*strafe;
+  player.z+=Math.cos(yaw)*forward - Math.sin(yaw+Math.PI/2)*strafe;
+
+  if(flyUp) player.y+=0.5;
+  if(flyDown) player.y-=0.5;
+
+  updateCamera();
+  renderer.render(scene,camera);
+}
+</script>
+</body>
+  </html>
